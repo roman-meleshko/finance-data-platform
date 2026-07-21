@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+
+# OS
+.DS_Store
+
+# data — fetched at runtime, never committed
+data/
+
+# credentials
+*.pem
+*keyfile*.json
+service-account*.json
+credentials*.json
