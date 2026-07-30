@@ -5,6 +5,9 @@ __pycache__/
 # OS
 .DS_Store
 
+# applications
+.vscode/
+
 # data — fetched at runtime, never committed
 data/
 
