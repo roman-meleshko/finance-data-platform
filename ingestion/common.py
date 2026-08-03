@@ -13,14 +13,20 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.compute as pc
 
+MISSING_MARKERS = ("", "N/A")
+
 
 def blank_or_null(column: pa.ChunkedArray) -> pa.ChunkedArray:
-    """True where a value is null or the empty string.
+    """True where a value is absent: null, empty string, or an 'N/A' marker.
 
-    Sources pad unused fields with '' rather than leaving them null, so a
-    null test alone would miss most genuinely absent values.
+    Sources rarely leave a field null. GLEIF pads with '', ECB writes 'N/A'
+    for a currency it did not quote that day, so a null test alone would miss
+    most genuinely absent values. pc.or_ is binary, hence the fold.
     """
-    return pc.fill_null(pc.or_(pc.is_null(column), pc.equal(column, "")), True)
+    missing = pc.is_null(column)
+    for marker in MISSING_MARKERS:
+        missing = pc.or_(missing, pc.equal(column, marker))
+    return pc.fill_null(missing, True)
 
 
 def bad_format(column: pa.ChunkedArray, regex: str) -> pa.ChunkedArray:
