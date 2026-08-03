@@ -19,7 +19,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SRC = REPO_ROOT / "data" / "raw" / "esma-firds" / "fulins"
+DEFAULT_SRC = REPO_ROOT / "data" / "raw" / "esma_firds" / "fulins"
 DEFAULT_OUT = REPO_ROOT / "data" / "parquet"
 
 # instrument-table columns: {column_name: XML path relative to RefData}.

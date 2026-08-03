@@ -10,7 +10,7 @@ Tests:
  - MIC non-null, unique, and four uppercase alphanumerics.
  - Row count above a floor, so a truncated file cannot load silently.
 
-Run from the repo root: python -m ingestion.mic.normalize
+Run from the repo root: python -m ingestion.iso_mic.normalize
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ import pyarrow.parquet as pq
 from ingestion.common import add_lineage, bad_format, blank_or_null, duplicate_keys
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SRC = REPO_ROOT / "data" / "raw" / "mic"
-DEFAULT_OUT = REPO_ROOT / "data" / "parquet" / "mic" / "iso_mic.parquet"
+DEFAULT_SRC = REPO_ROOT / "data" / "raw" / "iso_mic"
+DEFAULT_OUT = REPO_ROOT / "data" / "parquet" / "iso_mic" / "iso_mic.parquet"
 
 MIC_REGEX = r"^[A-Z0-9]{4}$"
 
