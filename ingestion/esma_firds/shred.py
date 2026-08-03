@@ -325,7 +325,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Stop after this many records per file (development aid).",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.limit is not None and args.out == DEFAULT_OUT:
+        parser.error(
+            "--limit needs an explicit --out: it would overwrite the full dataset"
+        )
+    return args
 
 
 def main() -> int:
