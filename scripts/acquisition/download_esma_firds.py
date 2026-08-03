@@ -18,7 +18,7 @@ from urllib3.util.retry import Retry
 
 API_URL = "https://registers.esma.europa.eu/solr/esma_registers_firds_files/select"
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_ROOT = REPO_ROOT / "data" / "raw" / "esma-firds"
+OUTPUT_ROOT = REPO_ROOT / "data" / "raw" / "esma_firds"
 CHUNK_SIZE = 1024 * 1024
 PAGE_SIZE = 100
 TIMEOUT = (10, 120)

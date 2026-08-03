@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 PAGE_URL = "https://www.iso20022.org/market-identifier-codes"
 FILE_URL = "https://www.iso20022.org/sites/default/files/ISO10383_MIC/ISO10383_MIC.csv"
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_ROOT = REPO_ROOT / "data" / "raw" / "mic"
+OUTPUT_ROOT = REPO_ROOT / "data" / "raw" / "iso_mic"
 HEADERS = {"User-Agent": "finance-data-platform/iso-mic-downloader"}
 TIMEOUT = (10, 60)
 MIN_BYTES = 400_000  # the list is ~490 KB and only grows; smaller means a wrong page
