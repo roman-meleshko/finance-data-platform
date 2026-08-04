@@ -13,7 +13,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.compute as pc
 
-MISSING_MARKERS = ("", "N/A")
+MISSING_MARKERS = ('', 'N/A')
 
 
 def blank_or_null(column: pa.ChunkedArray) -> pa.ChunkedArray:
@@ -38,8 +38,8 @@ def bad_format(column: pa.ChunkedArray, regex: str) -> pa.ChunkedArray:
 
 def duplicate_keys(table: pa.Table, keys: list[str]) -> pa.Table:
     """Key combinations occurring more than once."""
-    counted = table.group_by(keys).aggregate([(keys[0], "count")])
-    return counted.filter(pc.greater(counted[f"{keys[0]}_count"], 1))
+    counted = table.group_by(keys).aggregate([(keys[0], 'count')])
+    return counted.filter(pc.greater(counted[f'{keys[0]}_count'], 1))
 
 
 def add_lineage(table: pa.Table, path: Path, publication_date: str) -> pa.Table:
@@ -49,9 +49,9 @@ def add_lineage(table: pa.Table, path: Path, publication_date: str) -> pa.Table:
     API metadata, release page), so the caller supplies it.
     """
     values = {
-        "source_file": path.name,
-        "publication_date": publication_date,
-        "ingested_at": datetime.now(timezone.utc).isoformat(),
+        'source_file': path.name,
+        'publication_date': publication_date,
+        'ingested_at': datetime.now(timezone.utc).isoformat(),
     }
     for name, value in values.items():
         table = table.append_column(

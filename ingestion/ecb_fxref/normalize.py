@@ -27,22 +27,22 @@ import pyarrow.parquet as pq
 from ingestion.common import add_lineage, bad_format, blank_or_null, duplicate_keys
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SRC = REPO_ROOT / "data" / "raw" / "ecb_fxref"
-DEFAULT_OUT = REPO_ROOT / "data" / "parquet" / "ecb_fxref" / "ecb_fxref.parquet"
+DEFAULT_SRC = REPO_ROOT / 'data' / 'raw' / 'ecb_fxref'
+DEFAULT_OUT = REPO_ROOT / 'data' / 'parquet' / 'ecb_fxref' / 'ecb_fxref.parquet'
 
-FILENAME_REGEX = re.compile(r"^eurofxref-hist-(\d{4}-\d{2}-\d{2})\.csv$")
-CURRENCY_COLUMNS_REGEX = r"^[A-Z]{3}$"
-DATE_REGEX = r"^\d{4}-\d{2}-\d{2}$"
-DATE_FIELD = "Date"
+FILENAME_REGEX = re.compile(r'^eurofxref-hist-(\d{4}-\d{2}-\d{2})\.csv$')
+CURRENCY_COLUMNS_REGEX = r'^[A-Z]{3}$'
+DATE_REGEX = r'^\d{4}-\d{2}-\d{2}$'
+DATE_FIELD = 'Date'
 
 OUT_COLUMNS = ['date', 'currency', 'fx_rate']
-LINEAGE = ("source_file", "publication_date", "ingested_at")
+LINEAGE = ('source_file', 'publication_date', 'ingested_at')
 
 
 def get_latest_file_path() -> Path:
-    matches = sorted(DEFAULT_SRC.glob("eurofxref-hist-*.csv"))
+    matches = sorted(DEFAULT_SRC.glob('eurofxref-hist-*.csv'))
     if not matches:
-        raise FileNotFoundError(f"no ECB FXREF file under {DEFAULT_SRC}")
+        raise FileNotFoundError(f'no ECB FXREF file under {DEFAULT_SRC}')
     return matches[-1]
 
 
@@ -50,7 +50,7 @@ def publication_date(filename: str) -> str:
     """eurofxref-hist-2026-07-13.csv -> 2026-07-13."""
     match = FILENAME_REGEX.match(filename)
     if not match:
-        raise ValueError(f"cannot parse publication date from {filename!r}")
+        raise ValueError(f'cannot parse publication date from {filename!r}')
     return match.group(1)
 
 
@@ -60,7 +60,7 @@ def read_table(path: Path) -> pa.Table:
     try:
         table = pacsv.read_csv(path)
     except pa.ArrowError as exc:
-        raise ValueError(f"failed to read CSV {path.name} -- {exc}") from exc
+        raise ValueError(f'failed to read CSV {path.name} -- {exc}') from exc
 
     # Build a schema with every column as string and cast the table
     schema = pa.schema([(name, pa.string()) for name in table.column_names])
@@ -69,8 +69,8 @@ def read_table(path: Path) -> pa.Table:
 
 def drop_empty_columns(table: pa.Table) -> pa.Table:
     col_names = table.column_names
-    if any(name == "" for name in col_names):
-        keep = [name for name in col_names if name != ""]
+    if any(name == '' for name in col_names):
+        keep = [name for name in col_names if name != '']
         table = table.select(keep)
     return table
 
@@ -82,28 +82,28 @@ def check_fxref(table: pa.Table) -> list[str]:
 
     missing = table.filter(blank_or_null(table[DATE_FIELD]))
     if missing.num_rows:
-        problems.append(f"{missing.num_rows} rows with no Date")
+        problems.append(f'{missing.num_rows} rows with no Date')
 
     # mode="all" counts null as a value; the default ignores nulls and would
     # report a missing Date a second time as a phantom duplicate.
-    distinct = pc.count_distinct(table[DATE_FIELD], mode="all").as_py()
+    distinct = pc.count_distinct(table[DATE_FIELD], mode='all').as_py()
     if distinct != n_rows:
         duplicates = duplicate_keys(table, [DATE_FIELD])
         examples = duplicates[DATE_FIELD].slice(0, 3).to_pylist()
         problems.append(
-            f"{n_rows - distinct} duplicate Date values, e.g. {examples}"
+            f'{n_rows - distinct} duplicate Date values, e.g. {examples}'
         )
 
     bad = table.filter(bad_format(table[DATE_FIELD], DATE_REGEX))
     if bad.num_rows:
         problems.append(
-            f"{bad.num_rows} rows where Date is not a valid ISO 8601 date, "
-            f"e.g. {bad[DATE_FIELD].slice(0, 3).to_pylist()}"
+            f'{bad.num_rows} rows where Date is not a valid ISO 8601 date, '
+            f'e.g. {bad[DATE_FIELD].slice(0, 3).to_pylist()}'
         )
 
     if n_rows < 7000:
         problems.append(
-            f"number of rows in the file ({n_rows}) is lower than expected (7000)"
+            f'number of rows in the file ({n_rows}) is lower than expected (7000)'
         )
 
     columns = table.column_names
@@ -112,7 +112,7 @@ def check_fxref(table: pa.Table) -> list[str]:
         if col != DATE_FIELD and not re.match(CURRENCY_COLUMNS_REGEX, col)
     ]
     if invalid_cols:
-        problems.append(f"invalid column names: {invalid_cols}")
+        problems.append(f'invalid column names: {invalid_cols}')
 
     return problems
 
@@ -136,18 +136,18 @@ def unpivot(table: pa.Table) -> pa.Table:
         slices.append(
             pa.table(
                 {
-                    "date": date_column,
-                    "currency": pa.array([currency] * n_rows, pa.string()),
-                    "fx_rate": rates,
+                    'date': date_column,
+                    'currency': pa.array([currency] * n_rows, pa.string()),
+                    'fx_rate': rates,
                 }
             ).filter(quoted)
         )
 
     if not slices:
-        raise ValueError("no currency columns found to unpivot")
+        raise ValueError('no currency columns found to unpivot')
 
     long_table = pa.concat_tables(slices)
-    return long_table.sort_by([("date", "ascending"), ("currency", "ascending")])
+    return long_table.sort_by([('date', 'ascending'), ('currency', 'ascending')])
 
 
 def check_unpivot(wide: pa.Table, long: pa.Table) -> list[str]:
@@ -163,16 +163,16 @@ def check_unpivot(wide: pa.Table, long: pa.Table) -> list[str]:
     )
     if long.num_rows != quoted_cells:
         problems.append(
-            f"unpivot lost rows: {quoted_cells} quoted cells in, "
-            f"{long.num_rows} rows out"
+            f'unpivot lost rows: {quoted_cells} quoted cells in, '
+            f'{long.num_rows} rows out'
         )
 
     currencies_in = sum(1 for name in wide.column_names if name != DATE_FIELD)
-    currencies_out = pc.count_distinct(long["currency"], mode="all").as_py()
+    currencies_out = pc.count_distinct(long['currency'], mode='all').as_py()
     if currencies_out > currencies_in:
         problems.append(
-            f"unpivot invented currencies: {currencies_in} columns in, "
-            f"{currencies_out} distinct out"
+            f'unpivot invented currencies: {currencies_in} columns in, '
+            f'{currencies_out} distinct out'
         )
 
     return problems
@@ -187,7 +187,7 @@ def write(table: pa.Table, destination: Path = DEFAULT_OUT) -> None:
 
     table = table.select(order).cast(schema)
 
-    pq.write_table(table, destination, compression="snappy")
+    pq.write_table(table, destination, compression='snappy')
 
 
 def main() -> int:
@@ -201,19 +201,19 @@ def main() -> int:
         problems += check_unpivot(table, long_table)
 
     if problems:
-        print(f"{file_path.name}: {table.num_rows} quotation days [FAIL]")
+        print(f'{file_path.name}: {table.num_rows} quotation days [FAIL]')
         for problem in problems:
-            print(f"    {problem}")
+            print(f'    {problem}')
         return 1
 
     long_table = add_lineage(
         long_table, file_path, publication_date(file_path.name)
     )
     write(long_table)
-    print(f"{long_table.num_rows} rows saved to {DEFAULT_OUT} [ok]")
+    print(f'{long_table.num_rows} rows saved to {DEFAULT_OUT} [ok]')
 
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

@@ -28,48 +28,48 @@ import pyarrow.parquet as pq
 from ingestion.common import add_lineage, bad_format, blank_or_null, duplicate_keys
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SRC = REPO_ROOT / "data" / "raw" / "gleif" / "golden-copy"
-DEFAULT_OUT = REPO_ROOT / "data" / "parquet" / "gleif"
+DEFAULT_SRC = REPO_ROOT / 'data' / 'raw' / 'gleif' / 'golden-copy'
+DEFAULT_OUT = REPO_ROOT / 'data' / 'parquet' / 'gleif'
 
 BLOCK_SIZE = 32 << 20  # 32 MiB per read batch
 
 # As a string, not a compiled pattern: Arrow's match_substring_regex takes RE2 source.
-LEI_REGEX = r"^[A-Z0-9]{18}[0-9]{2}$"
+LEI_REGEX = r'^[A-Z0-9]{18}[0-9]{2}$'
 
 # ---------------------------------------------------------------- LEI2
 # Source column -> output column. Read columns and written columns are the same
 # here, so this single map drives both the reader and the schema.
 FIELDS_LEI = {
-    "LEI":                                   "lei",
-    "Entity.LegalName":                      "legal_name",
-    "Entity.LegalAddress.Country":           "legal_country",
-    "Entity.LegalAddress.City":              "legal_city",
-    "Entity.HeadquartersAddress.Country":    "hq_country",
-    "Entity.HeadquartersAddress.City":       "hq_city",
-    "Entity.LegalJurisdiction":              "legal_jurisdiction",
-    "Entity.EntityCategory":                 "entity_category",
-    "Entity.LegalForm.EntityLegalFormCode":  "legal_form_code",
-    "Entity.EntityStatus":                   "entity_status",
-    "Entity.EntityCreationDate":             "entity_creation_date",
-    "Entity.SuccessorEntity.1.SuccessorLEI": "successor_lei",
-    "Registration.RegistrationStatus":       "registration_status",
-    "Registration.InitialRegistrationDate":  "initial_registration_date",
-    "Registration.LastUpdateDate":           "last_update_date",
-    "Registration.NextRenewalDate":          "next_renewal_date",
-    "Registration.ManagingLOU":              "managing_lou",
-    "ConformityFlag":                        "conformity_flag",
+    'LEI':                                   'lei',
+    'Entity.LegalName':                      'legal_name',
+    'Entity.LegalAddress.Country':           'legal_country',
+    'Entity.LegalAddress.City':              'legal_city',
+    'Entity.HeadquartersAddress.Country':    'hq_country',
+    'Entity.HeadquartersAddress.City':       'hq_city',
+    'Entity.LegalJurisdiction':              'legal_jurisdiction',
+    'Entity.EntityCategory':                 'entity_category',
+    'Entity.LegalForm.EntityLegalFormCode':  'legal_form_code',
+    'Entity.EntityStatus':                   'entity_status',
+    'Entity.EntityCreationDate':             'entity_creation_date',
+    'Entity.SuccessorEntity.1.SuccessorLEI': 'successor_lei',
+    'Registration.RegistrationStatus':       'registration_status',
+    'Registration.InitialRegistrationDate':  'initial_registration_date',
+    'Registration.LastUpdateDate':           'last_update_date',
+    'Registration.NextRenewalDate':          'next_renewal_date',
+    'Registration.ManagingLOU':              'managing_lou',
+    'ConformityFlag':                        'conformity_flag',
 }
 
 # ---------------------------------------------------------------- RR
 # Unlike LEI2, the columns READ are not the columns WRITTEN: the five period
 # slots collapse into one pair of dates. So RR needs three declarations.
 FIELDS_RR = {
-    "Relationship.StartNode.NodeID":     "child_lei",
-    "Relationship.StartNode.NodeIDType": "child_id_type",
-    "Relationship.EndNode.NodeID":       "parent_lei",
-    "Relationship.EndNode.NodeIDType":   "parent_id_type",
-    "Relationship.RelationshipType":     "relationship_type",
-    "Relationship.RelationshipStatus":   "relationship_status",
+    'Relationship.StartNode.NodeID':     'child_lei',
+    'Relationship.StartNode.NodeIDType': 'child_id_type',
+    'Relationship.EndNode.NodeID':       'parent_lei',
+    'Relationship.EndNode.NodeIDType':   'parent_id_type',
+    'Relationship.RelationshipType':     'relationship_type',
+    'Relationship.RelationshipStatus':   'relationship_status',
 }
 
 # GLEIF flattens a repeating group into fixed numbered slots, and the slot index
@@ -77,18 +77,18 @@ FIELDS_RR = {
 # the time and an ACCOUNTING_PERIOD 32% of the time. Never read by position.
 PERIOD_SLOTS = [
     (
-        f"Relationship.Period.{i}.periodType",
-        f"Relationship.Period.{i}.startDate",
-        f"Relationship.Period.{i}.endDate",
+        f'Relationship.Period.{i}.periodType',
+        f'Relationship.Period.{i}.startDate',
+        f'Relationship.Period.{i}.endDate',
     )
     for i in range(1, 6)
 ]
-WANTED_PERIOD = "RELATIONSHIP_PERIOD"
+WANTED_PERIOD = 'RELATIONSHIP_PERIOD'
 
 READ_COLUMNS_RR = list(FIELDS_RR) + [c for slot in PERIOD_SLOTS for c in slot]
-OUT_COLUMNS_RR = list(FIELDS_RR.values()) + ["rel_start_date", "rel_end_date"]
+OUT_COLUMNS_RR = list(FIELDS_RR.values()) + ['rel_start_date', 'rel_end_date']
 
-LINEAGE = ("source_file", "publication_date", "ingested_at")
+LINEAGE = ('source_file', 'publication_date', 'ingested_at')
 
 
 def build_schema(columns: list[str]) -> pa.Schema:
@@ -102,15 +102,15 @@ def build_schema(columns: list[str]) -> pa.Schema:
 
 def publication_date(filename: str) -> str:
     """20260723-1600-gleif-goldencopy-lei2-golden-copy.csv -> 2026-07-23."""
-    stamp = filename.split("-")[0]
-    return f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}"
+    stamp = filename.split('-')[0]
+    return f'{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}'
 
 
 def source_file(kind: str) -> Path:
     """Newest golden-copy file for 'lei2' or 'rr'."""
-    matches = sorted(DEFAULT_SRC.glob(f"*-{kind}-golden-copy.csv"))
+    matches = sorted(DEFAULT_SRC.glob(f'*-{kind}-golden-copy.csv'))
     if not matches:
-        raise FileNotFoundError(f"no {kind} golden copy under {DEFAULT_SRC}")
+        raise FileNotFoundError(f'no {kind} golden copy under {DEFAULT_SRC}')
     return matches[-1]
 
 
@@ -126,7 +126,7 @@ def open_reader(path: Path, columns: list[str]) -> pacsv.CSVStreamingReader:
             ),
         )
     except pa.ArrowKeyError as exc:
-        raise ValueError(f"{path.name}: expected column missing -- {exc}") from exc
+        raise ValueError(f'{path.name}: expected column missing -- {exc}') from exc
 
 
 def _relationship_period(table: pa.Table) -> tuple[pa.ChunkedArray, pa.ChunkedArray]:
@@ -176,8 +176,8 @@ def project_rr(path: Path, limit: int | None = None) -> pa.Table:
     start, end = _relationship_period(table)
     table = table.select(list(FIELDS_RR))  # drop the 15 slot columns
     table = table.rename_columns([FIELDS_RR[name] for name in table.schema.names])
-    table = table.append_column("rel_start_date", start)
-    table = table.append_column("rel_end_date", end)
+    table = table.append_column('rel_start_date', start)
+    table = table.append_column('rel_end_date', end)
     return add_lineage(table, path, publication_date(path.name))
 
 
@@ -185,21 +185,21 @@ def check_lei(table: pa.Table) -> list[str]:
     """Structural checks on the entity table."""
     problems = []
 
-    missing = table.filter(blank_or_null(table["lei"]))
+    missing = table.filter(blank_or_null(table['lei']))
     if missing.num_rows:
-        problems.append(f"{missing.num_rows} rows with no lei")
+        problems.append(f'{missing.num_rows} rows with no lei')
 
     # mode="all" counts null as a value; the default ignores nulls and would
     # report a missing lei a second time as a phantom duplicate.
-    distinct = pc.count_distinct(table["lei"], mode="all").as_py()
+    distinct = pc.count_distinct(table['lei'], mode='all').as_py()
     if distinct != table.num_rows:
-        duplicates = duplicate_keys(table, ["lei"])
-        examples = duplicates["lei"].slice(0, 3).to_pylist()
+        duplicates = duplicate_keys(table, ['lei'])
+        examples = duplicates['lei'].slice(0, 3).to_pylist()
         problems.append(
-            f"{table.num_rows - distinct} duplicate lei values, e.g. {examples}"
+            f'{table.num_rows - distinct} duplicate lei values, e.g. {examples}'
         )
 
-    bad = table.filter(bad_format(table["lei"], LEI_REGEX))
+    bad = table.filter(bad_format(table['lei'], LEI_REGEX))
     if bad.num_rows:
         problems.append(
             f"{bad.num_rows} rows where lei is not a valid LEI, "
@@ -212,28 +212,28 @@ def check_lei(table: pa.Table) -> list[str]:
 def check_rr(table: pa.Table) -> list[str]:
     """Structural checks on the relationship table."""
     problems = []
-    keys = ["child_lei", "parent_lei", "relationship_type"]
+    keys = ['child_lei', 'parent_lei', 'relationship_type']
 
     duplicates = duplicate_keys(table, keys)
     if duplicates.num_rows:
         examples = duplicates.select(keys).slice(0, 3).to_pylist()
         problems.append(
-            f"{duplicates.num_rows} duplicate {tuple(keys)} keys, e.g. {examples}"
+            f'{duplicates.num_rows} duplicate {tuple(keys)} keys, e.g. {examples}'
         )
 
-    for column in ("child_lei", "parent_lei"):
+    for column in ('child_lei', 'parent_lei'):
         bad = table.filter(bad_format(table[column], LEI_REGEX))
         if bad.num_rows:
             problems.append(
-                f"{bad.num_rows} rows where {column} is not a valid LEI, "
-                f"e.g. {bad[column].slice(0, 3).to_pylist()}"
+                f'{bad.num_rows} rows where {column} is not a valid LEI, '
+                f'e.g. {bad[column].slice(0, 3).to_pylist()}'
             )
 
     # Both endpoints are declared to be LEIs; anything else means the graph is
     # not the entity graph we think it is.
-    for column in ("child_id_type", "parent_id_type"):
+    for column in ('child_id_type', 'parent_id_type'):
         unexpected = table.filter(
-            pc.invert(pc.fill_null(pc.equal(table[column], "LEI"), False))
+            pc.invert(pc.fill_null(pc.equal(table[column], 'LEI'), False))
         )
         if unexpected.num_rows:
             problems.append(
@@ -253,33 +253,33 @@ def write(table: pa.Table, order: list[str], destination: Path) -> None:
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     table = table.select(order).cast(build_schema(order))
-    pq.write_table(table, destination, compression="snappy")
+    pq.write_table(table, destination, compression='snappy')
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "files",
-        nargs="?",
-        choices=("lei", "rr", "both"),
-        default="both",
-        help="Which golden copy to project (default: both).",
+        'files',
+        nargs='?',
+        choices=('lei', 'rr', 'both'),
+        default='both',
+        help='Which golden copy to project (default: both).',
     )
     parser.add_argument(
-        "--out",
+        '--out',
         type=Path,
         default=DEFAULT_OUT,
-        help="Output directory for the Parquet tables.",
+        help='Output directory for the Parquet tables.',
     )
     parser.add_argument(
-        "--limit",
+        '--limit',
         type=int,
-        help="Stop after this many records per file (development aid).",
+        help='Stop after this many records per file (development aid).',
     )
     args = parser.parse_args()
     if args.limit is not None and args.out == DEFAULT_OUT:
         parser.error(
-            "--limit needs an explicit --out: it would overwrite the full dataset"
+            '--limit needs an explicit --out: it would overwrite the full dataset'
         )
     return args
 
@@ -287,37 +287,37 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    if args.files in ("lei", "both"):
-        path = source_file("lei2")
+    if args.files in ('lei', 'both'):
+        path = source_file('lei2')
         table = project_lei(path, args.limit)
         problems = check_lei(table)
         if problems:
-            print(f"{path.name}: {table.num_rows} entities [FAIL]")
+            print(f'{path.name}: {table.num_rows} entities [FAIL]')
             for problem in problems:
-                print(f"    {problem}")
+                print(f'    {problem}')
             return 1
 
-        out_path = args.out / "gleif_entity.parquet"
+        out_path = args.out / 'gleif_entity.parquet'
         write(table, list(FIELDS_LEI.values()) + list(LINEAGE), out_path)
-        print(f"{table.num_rows} rows saved to {out_path} [ok]")
+        print(f'{table.num_rows} rows saved to {out_path} [ok]')
 
-    if args.files in ("rr", "both"):
-        path = source_file("rr")
+    if args.files in ('rr', 'both'):
+        path = source_file('rr')
         table = project_rr(path, args.limit)
         problems = check_rr(table)
-        out_path = args.out / "gleif_relationship.parquet"
+        out_path = args.out / 'gleif_relationship.parquet'
 
         if problems:
-            print(f"{path.name}: {table.num_rows} relationships [FAIL]")
+            print(f'{path.name}: {table.num_rows} relationships [FAIL]')
             for problem in problems:
-                print(f"    {problem}")
+                print(f'    {problem}')
             return 1
 
         write(table, OUT_COLUMNS_RR + list(LINEAGE), out_path)
-        print(f"{table.num_rows} rows saved to {out_path} [ok]")
+        print(f'{table.num_rows} rows saved to {out_path} [ok]')
 
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())
