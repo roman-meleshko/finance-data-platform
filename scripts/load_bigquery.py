@@ -25,6 +25,7 @@ LOCATION = 'EU'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PARQUET_DIR = REPO_ROOT / 'data' / 'parquet'
 TABLES = {
+    'calendar': 'calendar/calendar.parquet',
     'ecb_fxref': 'ecb_fxref/ecb_fxref.parquet',
     'firds_instrument': 'firds_instrument/FULINS*.parquet',
     'firds_underlying': 'firds_underlying/FULINS*.parquet',
@@ -81,7 +82,12 @@ def load_table_to_bigquery(table_name: str, bq: bigquery.Client) -> int:
 # asserts FIDELITY (warehouse == files), not the all-string policy: that
 # policy belongs to the normalizers that write the files, and the shredder
 # deliberately declares the derived ordinal as an integer.
-ARROW_TO_BQ = {'string': 'STRING', 'int32': 'INTEGER', 'int64': 'INTEGER'}
+ARROW_TO_BQ = {
+    'string': 'STRING',
+    'int32': 'INTEGER',
+    'int64': 'INTEGER',
+    'bool': 'BOOLEAN',
+}
 
 
 def verify(table_name: str, files: list[Path], bq: bigquery.Client) -> list[str]:
