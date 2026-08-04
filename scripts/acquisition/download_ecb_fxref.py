@@ -18,14 +18,14 @@ import pyarrow.compute as pc
 import pyarrow.csv as pacsv
 import requests
 
-FILE_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
+FILE_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip'
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_ROOT = REPO_ROOT / "data" / "raw" / "ecb_fxref"
-HEADERS = {"User-Agent": "finance-data-platform/ecb-fxref-downloader"}
+OUTPUT_ROOT = REPO_ROOT / 'data' / 'raw' / 'ecb_fxref'
+HEADERS = {'User-Agent': 'finance-data-platform/ecb-fxref-downloader'}
 TIMEOUT = (10, 60)
 MIN_BYTES = 600_000  # the archive is ~640 KB and only grows
-MEMBER_NAME = "eurofxref-hist.csv"
-DATE_COLUMN = "Date"
+MEMBER_NAME = 'eurofxref-hist.csv'
+DATE_COLUMN = 'Date'
 
 
 def get_ecbfxref_csv() -> bytes:
@@ -42,12 +42,12 @@ def get_ecbfxref_csv() -> bytes:
     payload = response.content
 
     if len(payload) < MIN_BYTES:
-        raise ValueError(f"suspiciously small ECB FX archive: {len(payload)} bytes")
+        raise ValueError(f'suspiciously small ECB FX archive: {len(payload)} bytes')
 
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         names = archive.namelist()
         if names != [MEMBER_NAME]:
-            raise ValueError(f"unexpected archive contents: {names}")
+            raise ValueError(f'unexpected archive contents: {names}')
         return archive.read(MEMBER_NAME)
 
 
@@ -67,7 +67,7 @@ def publication_date(csv_content: bytes) -> str:
         ),
     )
     if table.num_rows == 0:
-        raise ValueError("ECB CSV contains no rows")
+        raise ValueError('ECB CSV contains no rows')
     return pc.max(table[DATE_COLUMN]).as_py()
 
 
@@ -76,14 +76,14 @@ def main() -> int:
     published = publication_date(csv_content)
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_ROOT / f"eurofxref-hist-{published}.csv"
-    partial_path = output_path.with_suffix(output_path.suffix + ".part")
+    output_path = OUTPUT_ROOT / f'eurofxref-hist-{published}.csv'
+    partial_path = output_path.with_suffix(output_path.suffix + '.part')
     partial_path.write_bytes(csv_content)
     partial_path.replace(output_path)
 
-    print(f"ECB FX reference rates successfully downloaded to: {output_path}")
+    print(f'ECB FX reference rates successfully downloaded to: {output_path}')
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())
