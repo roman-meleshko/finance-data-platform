@@ -1,0 +1,41 @@
+version: 2
+
+sources:
+  - name: ecb_fxref
+    schema: raw
+    config:
+      loaded_at_field: ingested_at
+    tables:
+      - name: ecb_fxref
+        config:
+          freshness: null # add freshness check both on publication date and ingested_at
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - date
+                  - currency
+        columns:
+          - name: date
+            data_type: string
+            data_tests:
+              - not_null
+              
+          - name: currency
+            data_type: string
+            data_tests:
+              - not_null
+              
+          - name: fx_rate
+            data_type: string
+            data_tests:
+              - not_null
+              
+          - name: source_file
+            data_type: string
+              
+          - name: publication_date
+            data_type: string
+              
+          - name: ingested_at
+            data_type: string
