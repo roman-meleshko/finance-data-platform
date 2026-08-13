@@ -1,0 +1,114 @@
+version: 2
+
+models:
+  - name: int_esma_firds__instruments_versioned
+    description: >
+      Type-2 slowly changing dimension over the ESMA FIRDS instrument register,
+      built from the FULINS full file plus the DLTINS daily deltas. One row per
+      version of an instrument-venue pair, with a non-overlapping validity
+      interval covering the whole timeline of every key.
+
+      This is the consumption pattern ESMA prescribes in ESMA65-8-5014 section
+      4.2: register the full file on day T, then apply each day's delta record
+      types. Version validity is therefore day-grained, because the register
+      only changes when a file is published and no finer signal exists.
+
+      Interval convention: valid_to is INCLUSIVE, and an open-ended version
+      carries the sentinel 9999-12-31 rather than null. Every downstream
+      between-join must agree with that choice.
+
+      The base file contributes one version per key with valid_from floored to
+      1960-01-01 rather than the publisher's own ValidFrom. A full file states
+      the earliest state known, not the date each version began, and its
+      ValidFrom is a republication date that postdates most of the book. The
+      floor is the lowest date BigQuery will partition, and version_source
+      records which rows carry it so the seed is never mistaken for a
+      published event.
+
+      From the delta published on the base file's own date, only TERMNTD and
+      CANC records are taken. A full file lists live instruments, so it
+      already carries that day's new and modified records but structurally
+      cannot carry that day's terminations.
+    columns:
+      - name: instrument_version_sk
+        description: >
+          Surrogate key, hashed from the natural key plus valid_from. One value
+          per version, and the key a fact table stores.
+        data_tests:
+          - not_null
+          - unique
+      - name: isin
+        description: ISO 6166 instrument identifier.
+        data_tests:
+          - not_null
+      - name: trading_venue_mic
+        description: ISO 10383 market identifier code for the venue.
+        data_tests:
+          - not_null
+      - name: version_no
+        description: Sequence of this version within the key, starting at 1.
+        data_tests:
+          - not_null
+      - name: version_source
+        description: >
+          What opened this version: BASE for the seed from the full file, or
+          the delta record type. CANC is absent by design, because a
+          cancellation erases a key's history rather than opening a version,
+          so a cancel reaching this model means the erasure step failed.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['BASE', 'NEW', 'MODFD', 'TERMNTD']
+      - name: valid_from
+        description: >
+          First day this version was the register's current description of the
+          key. Never null, which holds only because the base seed is floored.
+        data_tests:
+          - not_null
+      - name: valid_to
+        description: >
+          Last day this version applied, inclusive. 9999-12-31 while the
+          version is still current.
+        data_tests:
+          - not_null
+      - name: is_current
+        description: True when no later version exists for the key.
+        data_tests:
+          - not_null
+      - name: is_terminated
+        description: >
+          True when this version was opened by a termination. Independent of
+          is_current: a terminated instrument's final version is both current
+          and terminated, and an earlier version of a modified instrument is
+          neither. Tradability on a date is is_current and not is_terminated;
+          an as-of lookup uses the interval and ignores both.
+        data_tests:
+          - not_null
+      - name: is_never_published
+        description: >
+          The publisher's own late-arrival marker, set when a record was
+          reported after its own termination date. Only ever true on
+          terminations, and false on every base-seeded version because a full
+          file cannot carry the flag.
+        data_tests:
+          - not_null
+      - name: register_valid_from_date
+        description: >
+          The publisher's ValidFrom for the underlying record, carried as an
+          attribute. On a new or modified record it equals the publication
+          date; on a termination it reaches back to the effective date of the
+          version being closed. Not the interval boundary, which is valid_from.
+      - name: terminated_at
+        description: >
+          Business date on which trading ends, which is a different clock from
+          the version interval and is routinely in the future. A version
+          published in July can stay current into October while the instrument
+          stops trading in September.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - isin
+              - trading_venue_mic
+              - valid_from

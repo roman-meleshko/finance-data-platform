@@ -16,4 +16,4 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: python -m ruff check .
-
+      - run: python -m sqlfluff lint dbt/
