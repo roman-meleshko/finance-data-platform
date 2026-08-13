@@ -12,6 +12,7 @@ GOOGLE_APPLICATION_CREDENTIALS=... python scripts/load_bigquery.py
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -29,6 +30,8 @@ TABLES = {
     'ecb_fxref': 'ecb_fxref/ecb_fxref.parquet',
     'firds_instrument': 'firds_instrument/FULINS*.parquet',
     'firds_underlying': 'firds_underlying/FULINS*.parquet',
+    'firds_instrument_delta': 'firds_instrument_delta/DLTINS*.parquet',
+    'firds_underlying_delta': 'firds_underlying_delta/DLTINS*.parquet',
     'gleif_entity': 'gleif/gleif_entity.parquet',
     'gleif_relationship': 'gleif/gleif_relationship.parquet',
     'iso_mic': 'iso_mic/iso_mic.parquet',
@@ -55,10 +58,29 @@ def ensure_dataset(client: bigquery.Client) -> None:
 def load_table_to_bucket(
     table_name: str, files: list[Path], bucket: storage.Bucket
 ) -> int:
-    """Upload one table's parquet files to the bucket; return bytes sent."""
+    """Mirror one table's parquet files into the bucket; return bytes sent.
+
+    The prefix MIRRORS the local directory rather than accumulating from it,
+    because BigQuery loads it with a wildcard: an object left behind by an
+    earlier run -- a file since renamed, re-split, or dropped from the corpus
+    -- would silently join every future load. verify() compares BigQuery
+    against the local files it was told about, so those extra rows would
+    arrive with nothing pointing at where they came from.
+
+    Deleting what is no longer on disk gives this step the same contract as
+    WRITE_TRUNCATE downstream: replace, never append. Surviving objects are
+    overwritten in place rather than deleted first, so no file the next load
+    needs is ever briefly absent.
+    """
+    prefix = f'parquet/{table_name}/'
+    wanted = {file.name for file in files}
+    for stale in bucket.list_blobs(prefix=prefix):
+        if stale.name.removeprefix(prefix) not in wanted:
+            stale.delete()
+
     total_bytes = 0
     for file in files:
-        blob = bucket.blob(f'parquet/{table_name}/{file.name}')
+        blob = bucket.blob(f'{prefix}{file.name}')
         blob.upload_from_filename(str(file))
         total_bytes += file.stat().st_size
     return total_bytes
@@ -121,14 +143,39 @@ def verify(table_name: str, files: list[Path], bq: bigquery.Client) -> list[str]
     return problems
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--only',
+        default=None,
+        help='comma-separated table names to load (default: all)',
+    )
+    args = parser.parse_args()
+    tables_to_load = list(TABLES) if args.only is None else [
+        n.strip() for n in args.only.split(',') if n.strip()
+    ]
+
+    if not tables_to_load:  # Only used with am empty string.
+        parser.error('--only selected no tables')
+
+    unknown_tables = [n for n in tables_to_load if n not in TABLES]
+    if unknown_tables:
+        parser.error(f'unknown table(s): {unknown_tables}. known: {sorted(TABLES)}')
+
+    args.only = tables_to_load
+    return args
+
+
 def main() -> int:
+    args = parse_args()
     bq = bigquery.Client(project=PROJECT_ID)
     gcs = storage.Client(project=PROJECT_ID)
     ensure_dataset(bq)
     bucket = gcs.bucket(BUCKET_NAME)
 
+    filtered_tables = {k: TABLES[k] for k in args.only}
     problems = []
-    for table_name, table_path in TABLES.items():
+    for table_name, table_path in filtered_tables.items():
         files = table_files(table_name, table_path)
         sent = load_table_to_bucket(table_name, files, bucket)
         rows = load_table_to_bigquery(table_name, bq)

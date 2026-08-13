@@ -79,7 +79,7 @@ sources:
                   arguments:
                     values: ['CALL', 'PUTO', 'OTHR']
                   config:
-                    where: "option_type != ''"
+                    where: "option_type is not null"
           - name: option_exercise_style
             data_type: string
             data_tests:
@@ -104,8 +104,20 @@ sources:
             data_type: string
           - name: inconsistency_indicator
             data_type: string
+            data_tests:
+            # ESMA declares these in the XSD but has never populated them;
+            # a failure here means new data to model, not broken data
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "is null"
           - name: last_updated
             data_type: string
+            data_tests:
+            # ESMA declares these in the XSD but has never populated them;
+            # a failure here means new data to model, not broken data
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "is null"
           - name: cfi_category
             data_type: string
             data_tests:
@@ -118,6 +130,155 @@ sources:
             data_type: string
           - name: ingested_at
             data_type: string
+
+      - name: firds_instrument_delta
+        config:
+          freshness: null # add freshness check both on publication_date and ingested_at
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - isin
+                  - trading_venue_mic
+                  - reporting_date
+        columns:
+          - name: isin
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: full_name
+            data_type: string
+          - name: short_name
+            data_type: string
+          - name: cfi_code
+            data_type: string
+            data_tests:
+              - not_null:
+                  config:
+                    where: "record_type != 'CANC'"
+              - dbt_utils.not_empty_string
+          - name: notional_ccy
+            data_type: string
+            data_tests:
+              - not_null:
+                  config:
+                    where: "record_type != 'CANC'"
+              - dbt_utils.not_empty_string
+          - name: commodity_deriv_indicator
+            data_type: string
+            data_tests:
+              # quoted: unquoted true/false would become YAML booleans and
+              # compile to IN (True, False) against a STRING column
+              - accepted_values:
+                  arguments:
+                    values: ['false', 'true']
+          - name: issuer_lei
+            data_type: string
+          - name: trading_venue_mic
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: issuer_requested
+            data_type: string
+          - name: admission_approval_dt
+            data_type: string
+          - name: admission_request_dt
+            data_type: string
+          - name: first_trade_dt
+            data_type: string
+          - name: termination_dt
+            data_type: string
+          - name: debt_total_issued_nominal
+            data_type: string
+          - name: debt_maturity_dt
+            data_type: string
+          - name: debt_nominal_per_unit
+            data_type: string
+          - name: derivative_expiry_dt
+            data_type: string
+          - name: price_multiplier
+            data_type: string
+          - name: option_type
+            data_type: string
+            data_tests:
+              # populated on options only (34% blank overall): the where
+              # config restricts the test to present values, else '' fails
+              - accepted_values:
+                  arguments:
+                    values: ['CALL', 'PUTO', 'OTHR']
+                  config:
+                    where: "option_type is not null"
+          - name: option_exercise_style
+            data_type: string
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['AMER', 'EURO', 'BERM', 'OTHR']
+                  config:
+                    where: "option_exercise_style != ''"
+          - name: delivery_type
+            data_type: string
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['CASH', 'PHYS', 'OPTL']
+                  config:
+                    where: "delivery_type != ''"
+          - name: valid_from
+            data_type: string
+          - name: relevant_competent_authority
+            data_type: string
+          - name: relevant_trading_venue
+            data_type: string
+          - name: inconsistency_indicator
+            data_type: string
+            data_tests:
+            # ESMA declares these in the XSD but has never populated them;
+            # a failure here means new data to model, not broken data
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "is null"
+          - name: last_updated
+            data_type: string
+            data_tests:
+            # ESMA declares these in the XSD but has never populated them;
+            # a failure here means new data to model, not broken data
+              - dbt_utils.expression_is_true:
+                  arguments:
+                    expression: "is null"
+          - name: cfi_category
+            data_type: string
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['C', 'D', 'E', 'F', 'H', 'I', 'J', 'O', 'R', 'S']
+          - name: source_file
+            data_type: string
+          - name: publication_date
+            data_type: string
+          - name: ingested_at
+            data_type: string
+          - name: record_sequence
+            data_type: integer
+          - name: reporting_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: record_type
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['MODFD', 'NEW', 'CANC', 'TERMNTD']
+          - name: never_published
+            data_type: string
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['true']
 
       - name: firds_underlying
         config:
@@ -178,3 +339,66 @@ sources:
             data_type: string
           - name: ingested_at
             data_type: string
+
+      - name: firds_underlying_delta
+        config:
+          freshness: null # add freshness check both on publication_date and ingested_at
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - publication_date
+                  - parent_isin
+                  - parent_mic
+                  - ordinal
+        columns:
+          - name: parent_isin
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: parent_mic
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: underlying_source
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+              - accepted_values:
+                  arguments:
+                    values: ['single', 'basket']
+          - name: underlying_type
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+              - accepted_values:
+                  arguments:
+                    values: ['ISIN', 'LEI', 'INDEX']
+          - name: underlying_id
+            data_type: string
+          - name: underlying_name
+            data_type: string
+          - name: ordinal
+            data_type: int64
+            data_tests:
+              - not_null
+          - name: cfi_category
+            data_type: string
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['C', 'D', 'E', 'F', 'H', 'I', 'J', 'O', 'R', 'S']
+          - name: source_file
+            data_type: string
+          - name: publication_date
+            data_type: string
+          - name: ingested_at
+            data_type: string
+          - name: record_sequence
+            data_type: integer
+            data_tests:
+              - not_null

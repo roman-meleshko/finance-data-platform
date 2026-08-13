@@ -93,6 +93,27 @@ def latest_file_set(documents: list[dict], file_type: str) -> list[dict]:
     )
 
 
+def file_sets_in_range(
+    documents: list[dict], file_type: str, since: str, until: str
+) -> list[dict]:
+    """Every publication of one file type between two dates, inclusive.
+
+    latest_file_set() is right for FULINS, which is a weekly full snapshot
+    where only the newest matters. It is wrong for DLTINS, where the point is a
+    CONTIGUOUS daily sequence: a base plus one delta five days later does not
+    reconstruct anything, and nothing in the files says a day is missing.
+    """
+    return sorted(
+        (
+            doc
+            for doc in documents
+            if doc.get('file_type') == file_type
+            and since <= (doc.get('publication_date') or '')[:10] <= until
+        ),
+        key=lambda doc: (doc.get('publication_date', ''), doc.get('file_name', '')),
+    )
+
+
 def format_bytes(size: int | None) -> str:
     if size is None:
         return 'unknown'
@@ -105,8 +126,9 @@ def format_bytes(size: int | None) -> str:
 
 
 def expected_extracted_path(archive_path: Path) -> Path:
+    """DLTINS_20260719_01of01.zip -> DLTINS_20260719_01of01.xml."""
     name = archive_path.name
-    return archive_path.with_name(name.removesuffix('.zip'))
+    return archive_path.with_name(name.removesuffix('.zip') + '.xml')
 
 
 def output_paths(document: dict, output_dir: Path) -> tuple[Path, Path]:
@@ -182,18 +204,23 @@ def download_and_extract(
 
     partial_path.replace(archive_path)
     with zipfile.ZipFile(archive_path) as archive:
-        unsafe = [
-            name
-            for name in archive.namelist()
-            if not is_safe_member(output_dir, name)
-        ]
+        members = archive.namelist()
+        unsafe = [name for name in members if not is_safe_member(output_dir, name)]
         if unsafe:
             raise ValueError(f'Unsafe ZIP member(s): {unsafe}')
         archive.extractall(output_dir)
 
-    if not extracted_path.is_file() or extracted_path.stat().st_size == 0:
+    # Check what the archive actually declared, not what its name implied. The
+    # naming convention is only needed before the download, to decide whether a
+    # file is already on disk; once the zip is open it can speak for itself.
+    for member in members:
+        landed = output_dir / member
+        if not landed.is_file() or landed.stat().st_size == 0:
+            raise ValueError(f'Extracted member missing or empty: {landed}')
+    if extracted_path.name not in members:
         raise ValueError(
-            f'Expected extracted file is missing or empty: {extracted_path}'
+            f'{archive_path.name} holds {members}, expected {extracted_path.name} — '
+            'the naming convention changed and the already-present check is now wrong'
         )
 
     if not keep_zip:
@@ -219,6 +246,32 @@ def show_progress(
     )
 
 
+def dltins_watermark() -> str | None:
+    """Latest DLTINS publication date already extracted, or None.
+
+    The filename stamp is the watermark: DLTINS_20260731_01of02.xml -> 2026-07-31.
+    Reading it from disk instead of asking the caller is what makes --resume
+    self-healing -- the next run always starts where the corpus actually ends,
+    so a week of not running fetches a week of publications instead of leaving
+    a hole nothing notices until the contiguity test goes red.
+    """
+    stamps = []
+    for path in (OUTPUT_ROOT / 'dltins').glob('DLTINS_*.xml'):
+        try:
+            stamps.append(publication_stamp(path.name))
+        except ValueError:
+            continue
+    return max(stamps) if stamps else None
+
+
+def publication_stamp(filename: str) -> str:
+    """DLTINS_20260731_01of02.xml -> 2026-07-31."""
+    for part in filename.split('_'):
+        if len(part) == 8 and part.isdigit():
+            return f'{part[:4]}-{part[4:6]}-{part[6:8]}'
+    raise ValueError(f'no publication date in filename: {filename}')
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -234,6 +287,25 @@ def parse_args() -> argparse.Namespace:
         help='Lookback window; must include a weekly FULINS set (default: 14).',
     )
     parser.add_argument(
+        '--since',
+        metavar='YYYY-MM-DD',
+        help='Fetch EVERY publication from this date instead of only the latest '
+        'set. Use for DLTINS, where a contiguous daily sequence is the point.',
+    )
+    parser.add_argument(
+        '--until',
+        metavar='YYYY-MM-DD',
+        help='End of the --since range, inclusive (default: today).',
+    )
+    parser.add_argument(
+        '--resume',
+        action='store_true',
+        help='DLTINS only: derive --since from the newest delta already on '
+        'disk (+1 day) and fetch through today. Refuses to run if the '
+        'register no longer offers that date -- a partial heal would create '
+        'exactly the silent gap this flag exists to prevent.',
+    )
+    parser.add_argument(
         '--yes', action='store_true', help='Download without prompting.'
     )
     parser.add_argument(
@@ -246,7 +318,42 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Keep ZIP archives after extraction.',
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.resume:
+        if args.since:
+            parser.error('--resume derives --since; give one or the other')
+        if args.kind != 'dltins':
+            parser.error('--resume only makes sense with --kind dltins')
+        mark = dltins_watermark()
+        if mark is None:
+            parser.error(
+                'no DLTINS on disk to resume from -- fetch an initial range '
+                'with --since/--until first'
+            )
+        args.since = (
+            datetime.strptime(mark, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+            + timedelta(days=1)
+        ).strftime('%Y-%m-%d')
+    if args.until and not args.since:
+        parser.error('--until needs --since')
+    parsed = {}
+    for name, value in (('since', args.since), ('until', args.until)):
+        if value is not None:
+            try:
+                parsed[name] = datetime.strptime(value, '%Y-%m-%d').replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                parser.error(f'not a YYYY-MM-DD date: {value}')
+    if 'since' in parsed:
+        if 'until' in parsed and parsed['until'] < parsed['since']:
+            parser.error(f'--until {args.until} precedes --since {args.since}')
+        # The API query is bounded by --days, so a range outside that window
+        # would silently return nothing. Widen it to cover the request rather
+        # than making the caller compute the lookback themselves.
+        span = (datetime.now(timezone.utc) - parsed['since']).days + 2
+        args.days = max(args.days, span)
+    return args
 
 
 def main() -> int:
@@ -257,15 +364,45 @@ def main() -> int:
     session = build_session()
     documents, metadata = fetch_documents(session, args.days)
     selected: list[tuple[str, dict]] = []
+    until = args.until or f'{datetime.now(timezone.utc):%Y-%m-%d}'
+
+    def choose(file_type: str) -> list[dict]:
+        if args.since:
+            return file_sets_in_range(documents, file_type, args.since, until)
+        return latest_file_set(documents, file_type)
 
     if args.kind in {'all', 'fulins'}:
-        selected.extend(('fulins', doc) for doc in latest_file_set(documents, 'FULINS'))
+        selected.extend(('fulins', doc) for doc in choose('FULINS'))
     if args.kind in {'all', 'dltins'}:
-        selected.extend(('dltins', doc) for doc in latest_file_set(documents, 'DLTINS'))
+        selected.extend(('dltins', doc) for doc in choose('DLTINS'))
 
     if not selected:
-        print('No matching FIRDS files found. Increase --days and try again.')
+        if args.resume:
+            # up to date is a success, not an error: the watermark is today
+            # or later and ESMA simply has nothing newer yet
+            print(f'Nothing to resume: no DLTINS published on or after {args.since}.')
+            return 0
+        where = f'between {args.since} and {until}' if args.since else 'in the window'
+        print(f'No matching FIRDS files found {where}. Increase --days and try again.')
         return 1
+
+    if args.resume:
+        # A partial heal is worse than no heal: if the register's retention has
+        # already dropped the day after our watermark, fetching what remains
+        # would stitch a silent hole into the chain -- the exact defect the
+        # contiguity test exists to catch. Refuse, and say what recovery means.
+        earliest = min(
+            (doc.get('publication_date') or '')[:10] for _, doc in selected
+        )
+        if earliest > args.since:
+            print(
+                f'Cannot resume: the chain needs {args.since} next, but the '
+                f'register now starts at {earliest} -- the retention window '
+                'has passed it. The chain cannot be healed; re-base from a '
+                'fresh FULINS and fetch deltas forward from there.',
+                file=sys.stderr,
+            )
+            return 1
 
     items = []
     for kind, document in selected:
@@ -295,9 +432,11 @@ def main() -> int:
     if unknown_sizes:
         size_summary += f' plus {unknown_sizes} file(s) of unknown size'
 
+    scope = f'{args.since}..{until}' if args.since else 'latest'
+    days = len({(i['document'].get('publication_date') or '')[:10] for i in items})
     print(
-        f'Latest ESMA FIRDS selection: {len(items)} files '
-        f'({fulins_count} FULINS, {dltins_count} DLTINS).'
+        f'ESMA FIRDS selection ({scope}): {len(items)} files over '
+        f'{days} publication day(s) ({fulins_count} FULINS, {dltins_count} DLTINS).'
     )
     print(
         f'Pending download: {len(pending)} files, {size_summary}; '
