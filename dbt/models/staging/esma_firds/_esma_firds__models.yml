@@ -1,0 +1,193 @@
+version: 2
+
+models:
+  - name: stg_esma_firds__instruments
+    description: >
+      One row per (ISIN, trading venue MIC) from the FULINS weekly full file:
+      every instrument admitted to trading on an EU venue as of the snapshot
+      date. Renamed, typed, and with the publisher's sentinel dates decoded to
+      NULL by the parse_source_date and parse_source_timestamp macros.
+
+      The four *_at columns stay as TIMESTAMP and no date is derived from
+      them. ESMA publishes them with a Z suffix, but on non-sentinel rows
+      termination_dt clusters heavily at 22:00:00Z and 23:00:00Z, which looks
+      like a local midnight stored as UTC. That reading does not survive
+      checking, since those rows split roughly evenly across summer and winter
+      months rather than following daylight saving. Until ESMA65-11-1193
+      settles which timezone TermntnDt is expressed in, truncating to a date
+      would shift several million rows by a day if the local reading is
+      correct.
+    columns:
+      - name: isin
+        description: ISO 6166 instrument identifier. Half of the grain.
+        data_tests:
+          - not_null
+      - name: trading_venue_mic
+        description: ISO 10383 venue code. Half of the grain.
+        data_tests:
+          - not_null
+      - name: relevant_trading_venue_mic
+        description: >
+          MIC of the most relevant market in liquidity terms. This holds a
+          MIC rather than a venue name, with values such as FRAB and XSGA.
+      - name: register_valid_from_date
+        description: >
+          The publisher's own ValidFrom. On a full file this is a
+          republication date rather than the day a version began, which is why
+          the versioned dimension floors its base seed instead of using it.
+          Named to stay distinct from that constructed valid_from.
+        data_tests:
+          - not_null
+      - name: publication_date
+        data_tests:
+          - not_null
+      - name: debt_maturity_date
+        description: Sentinels decoded to NULL. Dense and continuous through 2125.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: "date '2125-12-31'"
+              config:
+                severity: warn
+      - name: derivative_expiry_date
+        description: >
+          Sentinels decoded to NULL. The residual far-future values are house
+          conventions rather than corruption. The largest, 2499, resolves to a
+          single venue and issuer. Quarantined at warn severity, not repaired.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: "date '2125-12-31'"
+              config:
+                severity: warn
+      - name: is_commodity_derivative
+        description: Never null in the snapshot, since raw carries 'true' or 'false' on every row.
+        data_tests:
+          - not_null
+      - name: is_issuer_requested
+        data_tests:
+          - not_null
+      - name: option_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['CALL', 'PUTO', 'OTHR']
+      - name: option_exercise_style
+        description: The four ISO 20022 exercise styles. AMER is the largest population.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['AMER', 'BERM', 'EURO', 'OTHR']
+      - name: delivery_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['CASH', 'PHYS', 'OPTL']
+      - name: ingested_at
+        description: >
+          Shredder wall clock, one value per source file. This is system time
+          rather than valid time, so it must never order a version history.
+          Cast strictly rather than safely, because a parse failure here means
+          the shredder emitted something malformed.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - isin
+              - trading_venue_mic
+
+  - name: stg_esma_firds__instrument_deltas
+    description: >
+      One row per (ISIN, MIC, publication date) from the DLTINS daily delta
+      files: a log of changes, not a set of current facts. Same columns as the
+      snapshot, different identity, because a key legitimately recurs across
+      publication days.
+
+      reporting_date is deliberately dropped: it equals publication_date on all
+      10,634,204 rows, and shred.py already treats disagreement between the
+      RptHdr period and the filename as FATAL, so carrying both adds no
+      information. Raw keeps it.
+
+      Same timezone caveat as stg_esma_firds__instruments.
+    columns:
+      - name: isin
+        data_tests:
+          - not_null
+      - name: trading_venue_mic
+        data_tests:
+          - not_null
+      - name: publication_date
+        description: Third element of the grain. The delta's valid-time clock.
+        data_tests:
+          - not_null
+      - name: record_type
+        description: >
+          The four change semantics. TERMNTD ends an instrument's valid time;
+          CANC corrects the record's system time by erasing it.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['NEW', 'MODFD', 'TERMNTD', 'CANC']
+      - name: register_valid_from_date
+        description: >
+          Direction reverses by record type. On NEW and MODFD it is the day the
+          version opens and equals publication_date. On TERMNTD it is the
+          effective date of the version being CLOSED, reaching back to 2020.
+          Null on cancellation rows, which carry keys and nothing else, so
+          this column has no not_null test unlike its snapshot counterpart.
+      - name: is_never_published
+        description: >
+          ESMA's own late-arrival marker, set when a record is reported after
+          its own termination date. Only ever true on terminations. Raw carries
+          'true' or NULL with no 'false', so absence means not flagged and is
+          coalesced to false.
+        data_tests:
+          - not_null
+      - name: record_sequence
+        description: >
+          Publisher document order. Not load bearing, since the triple grain
+          is already unique, but it is the only tie-break that is not an
+          invention if a future publication carries same-day duplicates.
+      - name: debt_maturity_date
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: "date '2125-12-31'"
+              config:
+                severity: warn
+      - name: derivative_expiry_date
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: "date '2125-12-31'"
+              config:
+                severity: warn
+      - name: option_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['CALL', 'PUTO', 'OTHR']
+      - name: option_exercise_style
+        description: The four ISO 20022 exercise styles. AMER is the largest population.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['AMER', 'BERM', 'EURO', 'OTHR']
+      - name: delivery_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['CASH', 'PHYS', 'OPTL']
+      - name: ingested_at
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - isin
+              - trading_venue_mic
+              - publication_date
