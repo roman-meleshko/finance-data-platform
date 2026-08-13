@@ -6,3 +6,6 @@ google-cloud-bigquery==3.42.2
 google-cloud-storage==3.1.1
 exchange_calendars==4.13.2
 holidays==0.102
+numpy==2.5.1
+pandas==3.0.3
+mimesis==21.0.0
