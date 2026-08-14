@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: stg_gleif__entities
+    description: >
+      One row per LEI from the GLEIF golden copy: legal name, addresses,
+      category and registration lifecycle, typed and with the file's empty
+      strings decoded to NULL. Entity dates keep their time component, since
+      GLEIF publishes full timestamps.
