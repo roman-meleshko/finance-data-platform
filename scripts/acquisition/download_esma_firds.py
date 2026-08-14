@@ -219,7 +219,7 @@ def download_and_extract(
             raise ValueError(f'Extracted member missing or empty: {landed}')
     if extracted_path.name not in members:
         raise ValueError(
-            f'{archive_path.name} holds {members}, expected {extracted_path.name} — '
+            f'{archive_path.name} holds {members}, expected {extracted_path.name}: '
             'the naming convention changed and the already-present check is now wrong'
         )
 
@@ -449,7 +449,7 @@ def main() -> int:
             status = 'existing' if item['exists'] else format_bytes(item['size'])
             print(
                 f"  {item['kind'].upper()} {document['publication_date']}: "
-                f"{document['file_name']} — {status}"
+                f"{document['file_name']}: {status}"
             )
         return 0
     if not pending:

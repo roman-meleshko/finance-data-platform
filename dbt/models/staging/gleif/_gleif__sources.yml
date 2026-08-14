@@ -64,8 +64,7 @@ sources:
             data_type: string
             data_tests:
               # 'NULL' is quoted deliberately: GLEIF publishes the literal
-              # string NULL as an enum token (8,971 rows measured). Unquoted,
-              # YAML would parse it as a real null inside the IN list.
+              # string NULL as an enum token (8,971 rows measured).
               - accepted_values:
                   arguments:
                     values: ['ACTIVE', 'INACTIVE', 'NULL']

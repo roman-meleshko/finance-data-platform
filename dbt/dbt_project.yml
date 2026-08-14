@@ -14,10 +14,9 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
-vars:
-  firds_base_date: '2026-07-18'
 
 
-# models:
-#   calendar:
-#     +materialized: view
+models:
+  finance_data_platform:
+    marts:
+      +materialized: table
