@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: stg_iso_mic__venues
+    description: >
+      One row per MIC from the ISO 10383 register, operating and segment
+      codes both, with the file's compact YYYYMMDD dates parsed and empty
+      strings decoded to NULL. is_operating_mic distinguishes the operating
+      code from its segments.

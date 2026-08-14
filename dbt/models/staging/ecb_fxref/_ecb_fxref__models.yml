@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: stg_ecb_fxref__rates
+    description: >
+      One row per currency per ECB publication day since 1999, quoted as
+      units of currency per euro. The euro itself never appears as a row;
+      consumers treat it as a constant 1.

@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: int_generated__position_movements
+    description: >
+      The movement seam: every event that changes a position, signed, in one
+      schema. Trades sign by side, transfers by direction. Every position
+      model downstream reads exactly this relation, so a new movement
+      species later changes this file and nothing else.
+    columns:
+      - name: movement_id
+        data_tests:
+          - unique
+          - not_null
+      - name: quantity_delta
+        data_tests:
+          - not_null
+      - name: movement_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['TRADE', 'TRANSFER']

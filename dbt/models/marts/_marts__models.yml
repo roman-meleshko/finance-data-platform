@@ -1,0 +1,413 @@
+version: 2
+
+models:
+  - name: dim_instruments
+    description: >
+      Type 2 instrument dimension over the book's traded universe: one row
+      per instrument, venue and version interval, carried from the versioned
+      register and enriched with the issuer's GLEIF record, the ISO 10383
+      venue entry and the crypto underlying mapping.
+
+      The population is the union of every (isin, trading_venue_mic) pair
+      referenced by trades and transfers. Position snapshots and income
+      events reference only instruments inside that set, so the book closes
+      over it. Priced-but-never-held instruments stay out: prices are a
+      measurement feed, not a business event.
+
+      Every trade and transfer in the book predates the first delta
+      publication, so point-in-time joins resolve every fact to the base
+      version by construction.
+
+      valid_to is inclusive with a 9999-12-31 open end, so consumers join
+      with "as_of between valid_from and valid_to" and never handle nulls.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - isin
+              - trading_venue_mic
+              - valid_from
+    columns:
+      - name: instrument_version_sk
+        description: >
+          Surrogate key of one version interval, carried from the versioned
+          register. Facts store it after resolving their as-of date once at
+          build time, so downstream joins are plain equi-joins.
+        data_tests:
+          - unique
+          - not_null
+      - name: isin
+        data_tests:
+          - not_null
+          # one venue per instrument is a property of this book, not of the
+          # register: every held instrument trades on exactly one MIC
+          - unique:
+              config:
+                where: "is_current"
+      - name: trading_venue_mic
+        data_tests:
+          - not_null
+      - name: version_source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['BASE', 'NEW', 'MODFD', 'TERMNTD']
+      - name: valid_from
+        data_tests:
+          - not_null
+      - name: valid_to
+        data_tests:
+          - not_null
+      - name: is_current
+        data_tests:
+          - not_null
+      - name: is_terminated
+        data_tests:
+          - not_null
+      - name: asset_class
+        description: >
+          Decoded from the CFI category letter. A new letter entering the
+          book should fail here first, then the decode gets extended.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['collective_investment', 'debt', 'equity']
+      - name: venue_name
+        description: ISO 10383 market name; every book MIC resolves.
+        data_tests:
+          - not_null
+      - name: issuer_name
+        description: >
+          GLEIF legal name. Measured complete for every version row that
+          carries an LEI, which is the contract this test freezes.
+        data_tests:
+          - not_null:
+              config:
+                where: "issuer_lei is not null"
+      - name: is_crypto_linked
+        data_tests:
+          - not_null
+
+  - name: dim_accounts
+    description: >
+      Type 1 account dimension, one row per account, flattening the client,
+      desk and relationship manager hierarchy. Type 1 because the account
+      master is a static snapshot with no change capture: there is no history
+      to version, and the one account-side feed that does carry history, the
+      RM assignment log, stays fully queryable in staging.
+
+      The dimension carries two RM columns on purpose. opening_rm_id is the
+      master's own value, frozen at account creation; current_rm_id is
+      derived from the latest assignment.
+    columns:
+      - name: account_id
+        data_tests:
+          - unique
+          - not_null
+      - name: client_id
+        data_tests:
+          - not_null
+      - name: opening_rm_id
+        data_tests:
+          - not_null
+      - name: current_rm_id
+        description: >
+          Latest assignment per the history table, which is authoritative;
+          the master's own rm_id goes stale on reassignment.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_generated__relationship_managers')
+                field: rm_id
+      - name: current_rm_name
+        data_tests:
+          - not_null
+      - name: client_domicile
+        data_tests:
+          - not_null
+      - name: arrival_book_value
+        data_tests:
+          - not_null
+      - name: opened_date
+        data_tests:
+          - not_null
+
+  - name: dim_clients
+    description: >
+      Type 1 client dimension: the book's own client master enriched with
+      the GLEIF record where the client is an entity. Client attributes here
+      and on dim_accounts project from the same staging models, so the
+      duplication is two views of one source, not two sources.
+    columns:
+      - name: client_id
+        data_tests:
+          - unique
+          - not_null
+      - name: lei
+        description: Present on entities, null for private individuals.
+      - name: legal_name
+        description: >
+          GLEIF legal name; measured complete for every client that carries
+          an LEI.
+        data_tests:
+          - not_null:
+              config:
+                where: "lei is not null"
+      - name: current_rm_id
+        description: Every client carries at least one assignment.
+        data_tests:
+          - not_null
+      - name: client_since_date
+        data_tests:
+          - not_null
+
+  - name: dim_dates
+    description: >
+      One row per calendar day of the book's two-year window, derived from
+      the generator's own calendar so every fact date resolves.
+      is_last_trading_day_of_month reproduces the snapshot cadence exactly:
+      the 25 flagged days are the 25 snapshot dates, measured before the
+      flag was written.
+    columns:
+      - name: date_key
+        data_tests:
+          - unique
+          - not_null
+      - name: is_trading_day
+        data_tests:
+          - not_null
+      - name: is_month_end
+        data_tests:
+          - not_null
+      - name: is_last_trading_day_of_month
+        data_tests:
+          - not_null
+
+  - name: fct_trades
+    description: >
+      One row per executed trade, all types together: trade_type is a
+      degenerate dimension, so funding flows and bond redemptions live
+      beside market activity rather than in fragment marts. The instrument
+      version is resolved once here, on trade_date, and stored as the
+      surrogate key. Settlement rolls T+2 past the book's last session, so
+      twelve settlement dates legitimately fall outside the calendar and
+      settlement_date carries no calendar test. At this row count the table
+      is deliberately unpartitioned and unclustered; at production scale it
+      would partition by trade_date and cluster by account_id.
+    columns:
+      - name: trade_id
+        data_tests:
+          - unique
+          - not_null
+      - name: instrument_version_sk
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_instruments')
+                field: instrument_version_sk
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: trade_date
+        data_tests:
+          - is_trading_date
+
+  - name: fct_transfers
+    description: >
+      One row per in-kind transfer, version-resolved on transfer_date the
+      same way trades are.
+    columns:
+      - name: transfer_id
+        data_tests:
+          - unique
+          - not_null
+      - name: instrument_version_sk
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_instruments')
+                field: instrument_version_sk
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: transfer_date
+        data_tests:
+          - is_trading_date
+
+  - name: fct_cash_events
+    description: >
+      One row per cash movement outside settlement. Income events resolve
+      their instrument version on event_date, the booking clock; deposits,
+      withdrawals and fees are account-level, so their isin and surrogate
+      key are null by design. This is the one fact where a null foreign key
+      is a modelled meaning rather than a resolution failure, which is why
+      the not_null test is scoped instead of dropped.
+    columns:
+      - name: cash_event_id
+        data_tests:
+          - unique
+          - not_null
+      - name: instrument_version_sk
+        data_tests:
+          - not_null:
+              config:
+                where: "isin is not null"
+          - relationships:
+              arguments:
+                to: ref('dim_instruments')
+                field: instrument_version_sk
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: event_date
+        data_tests:
+          - is_trading_date
+
+  - name: fct_fx_trades
+    description: >
+      One row per FX conversion. No instrument and no surrogate key: the
+      event is a currency pair, and its only instrument context comes
+      through the trade it funds.
+    columns:
+      - name: fx_trade_id
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: related_trade_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_trades')
+                field: trade_id
+      - name: trade_date
+        data_tests:
+          - is_trading_date
+
+  - name: fct_position_snapshots
+    description: >
+      The independently published month-end statement, version-resolved on
+      snapshot_date. Untouched numbers: this table is the reconciliation
+      counterparty for the derived book, so the derivation must never feed
+      it.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - snapshot_date
+              - account_id
+              - isin
+    columns:
+      - name: instrument_version_sk
+        data_tests:
+          - not_null
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_accounts')
+                field: account_id
+      - name: snapshot_date
+        data_tests:
+          - is_trading_date
+
+  - name: fct_prices
+    description: >
+      The measurement feed, incremental by partition: insert_overwrite
+      replaces exactly the business_date partitions an increment touches,
+      so a replayed day overwrites itself and idempotence falls out of the
+      storage layout. No surrogate key on purpose: prices cover 575
+      instruments the book never held, the dimension's population is
+      fact-defined, and this table never joins it. 1,967 rows carry
+      price_source carried_forward, the data-quality panel's first honest
+      number. The price_through variable exists for the incremental demo
+      protocol and defaults to letting everything through.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - business_date
+              - isin
+    columns:
+      - name: isin
+        data_tests:
+          - not_null
+      - name: price
+        data_tests:
+          - not_null
+      - name: business_date
+        data_tests:
+          - not_null
+
+  - name: fct_position_daily
+    description: >
+      The derived book: every movement accumulated over a spine of trading
+      days from each holding's first movement to the book's end, then valued
+      at the day's price. Debt values as percent of par times the nominal
+      per unit; everything else as price times quantity times multiplier.
+      Positions are derived from movements and reconciled against the
+      independent statement, never loaded in parallel; the reconciliation
+      and the non-negativity assertion are the two tests that can actually
+      fail. Daily P&L is deliberately deferred until the cash ledger lands:
+      its trade-flow leg needs the same signed-movement valuation both
+      models must share.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - business_date
+              - account_id
+              - isin
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "closing_quantity >= 0"
+    columns:
+      - name: instrument_version_sk
+        data_tests:
+          - not_null
+      - name: closing_quantity
+        data_tests:
+          - not_null
+      - name: price
+        description: >
+          The day's price, carried forward over missing prints: 411
+          instruments lack exactly one day's price row, 1,553 open
+          position cells land on those holes, and valuation uses the last
+          known price there, marked carried_forward. Execution and the
+          end-of-day price file are separate streams, so five trades
+          legitimately sit on days whose print is missing.
+        data_tests:
+          - not_null:
+              config:
+                where: "closing_quantity != 0"
+      - name: market_value_local
+        data_tests:
+          - not_null:
+              config:
+                where: "closing_quantity != 0"
+
