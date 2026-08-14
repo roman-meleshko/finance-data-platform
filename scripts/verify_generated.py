@@ -22,7 +22,7 @@ With --shape, writes measured_shape.json next to the manifest: the row counts,
 sums and distributions the documentation quotes, produced by the same script
 that gates the data so the two cannot drift apart.
 
-Usage: python scripts/verify_generated.py [--out data/generated]
+Usage: python scripts/verify_generated.py [--out data/parquet/generated]
        [--parquet-dir data/parquet] [--shape]
 """
 
@@ -255,7 +255,7 @@ def measure_shape(out: Path, cash_stats, position_stats) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path,
-                        default=REPO_ROOT / 'data' / 'generated')
+                        default=REPO_ROOT / 'data' / 'parquet' / 'generated')
     parser.add_argument('--parquet-dir', type=Path,
                         default=REPO_ROOT / 'data' / 'parquet')
     parser.add_argument('--shape', action='store_true',

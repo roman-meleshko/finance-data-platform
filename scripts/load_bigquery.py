@@ -25,6 +25,23 @@ DATASET_ID = 'raw'
 LOCATION = 'EU'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PARQUET_DIR = REPO_ROOT / 'data' / 'parquet'
+
+GENERATED_TABLES = [
+    'account',
+    'calendar',
+    'cash_event',
+    'client',
+    'crypto_mapping',
+    'desk',
+    'fx_trade',
+    'position_snapshot',
+    'price',
+    'rm_assignment',
+    'rm',
+    'trade',
+    'transfer',
+]
+
 TABLES = {
     'calendar': 'calendar/calendar.parquet',
     'ecb_fxref': 'ecb_fxref/ecb_fxref.parquet',
@@ -35,6 +52,11 @@ TABLES = {
     'gleif_entity': 'gleif/gleif_entity.parquet',
     'gleif_relationship': 'gleif/gleif_relationship.parquet',
     'iso_mic': 'iso_mic/iso_mic.parquet',
+
+    **{
+        f'gen_{name}': f'generated/gen_{name}.parquet'
+        for name in GENERATED_TABLES
+    },
 }
 
 
@@ -109,6 +131,7 @@ ARROW_TO_BQ = {
     'int32': 'INTEGER',
     'int64': 'INTEGER',
     'bool': 'BOOLEAN',
+    'double': 'FLOAT',
 }
 
 
