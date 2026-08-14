@@ -16,3 +16,4 @@ data/
 *keyfile*.json
 service-account*.json
 credentials*.json
+logs/
