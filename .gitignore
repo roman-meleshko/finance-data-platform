@@ -17,3 +17,4 @@ data/
 service-account*.json
 credentials*.json
 logs/
+.user.yml

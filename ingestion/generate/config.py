@@ -20,7 +20,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PARQUET = REPO_ROOT / 'data' / 'parquet'
-DEFAULT_OUT = REPO_ROOT / 'data' / 'generated'
+DEFAULT_OUT = DEFAULT_PARQUET / 'generated'
 
 # --- book shape (scaled by --scale) ---
 N_CLIENTS = 120

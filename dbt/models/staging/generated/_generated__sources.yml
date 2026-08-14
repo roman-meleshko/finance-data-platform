@@ -1,0 +1,608 @@
+version: 2
+
+sources:
+  - name: generated
+    description: >
+      The synthetic broker book, loaded as-is from the committed parquet
+      snapshot. The tables carry no load timestamp column and only change on
+      a deliberate regeneration, so there is no freshness contract. Values
+      are generator-written and complete by design, which is why staging
+      casts with cast rather than safe_cast: a malformed value is a generator
+      bug and should fail the build, not become a silent null.
+    schema: raw
+    tables:
+      - name: gen_account
+        columns:
+          - name: account_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: client_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_client')
+                    field: client_id
+          - name: desk_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_desk')
+                    field: desk_id
+          - name: rm_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_rm')
+                    field: rm_id
+          - name: base_currency
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['CHF', 'EUR', 'USD']
+          - name: mandate_type
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['advisory', 'discretionary', 'execution_only']
+          - name: house_model
+            data_type: string
+            data_tests:
+              # null on advisory and execution_only accounts: only a
+              # discretionary mandate tracks a house model
+              - accepted_values:
+                  arguments:
+                    values:
+                      - MODEL_AGGRESSIVE
+                      - MODEL_BALANCED
+                      - MODEL_CONSERVATIVE
+                      - MODEL_GROWTH
+          - name: opened_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: arrival_book_value
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: migrated
+            data_type: bool
+            data_tests:
+              - not_null
+
+      - name: gen_calendar
+        columns:
+          - name: calendar_date
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+          - name: is_trading_day
+            data_type: bool
+            data_tests:
+              - not_null
+
+      - name: gen_cash_event
+        columns:
+          - name: event_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: event_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: entitlement_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: account_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_account')
+                    field: account_id
+          - name: isin
+            data_type: string
+            data_tests:
+              # income always references its instrument; deposits,
+              # withdrawals and fees are account-level and never do
+              - not_null:
+                  config:
+                    where: "event_type in ('DIVIDEND', 'COUPON')"
+              - relationships:
+                  arguments:
+                    to: source('esma_firds', 'firds_instrument')
+                    field: isin
+          - name: event_type
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values:
+                      - COUPON
+                      - CUSTODY_FEE
+                      - DEPOSIT
+                      - DIVIDEND
+                      - FEE_RECEIVABLE
+                      - MGMT_FEE
+                      - WITHDRAWAL
+          - name: amount
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: currency
+            data_type: string
+            data_tests:
+              - not_null
+
+      - name: gen_client
+        columns:
+          - name: client_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: client_name
+            data_type: string
+            data_tests:
+              - not_null
+          - name: client_type
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['entity', 'private']
+          - name: domicile_country
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['CH', 'DE', 'FR', 'LU']
+          - name: lei
+            data_type: string
+            data_tests:
+              # entities carry a real GLEIF LEI; private individuals none
+              - valid_lei
+              - relationships:
+                  arguments:
+                    to: source('gleif', 'gleif_entity')
+                    field: lei
+          - name: risk_profile
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['aggressive', 'balanced', 'conservative', 'growth']
+          - name: client_since
+            data_type: string
+            data_tests:
+              - not_null
+
+      - name: gen_crypto_mapping
+        columns:
+          - name: isin
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+              - relationships:
+                  arguments:
+                    to: source('esma_firds', 'firds_instrument')
+                    field: isin
+          - name: underlying_symbol
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['BTC', 'ETH', 'SOL']
+          - name: instrument_name
+            data_type: string
+            data_tests:
+              - not_null
+          - name: asset_class
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['certificate', 'equity', 'fund']
+          - name: match_basis
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['firds_full_name']
+
+      - name: gen_desk
+        columns:
+          - name: desk_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: desk_name
+            data_type: string
+            data_tests:
+              - not_null
+          - name: region
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['Geneva', 'Lausanne', 'Zurich']
+          - name: head_rm_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_rm')
+                    field: rm_id
+
+      - name: gen_fx_trade
+        columns:
+          - name: fx_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: trade_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: account_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_account')
+                    field: account_id
+          - name: sell_currency
+            data_type: string
+            data_tests:
+              - not_null
+              # the sold leg is always the account's base currency
+              - accepted_values:
+                  arguments:
+                    values: ['CHF', 'EUR', 'USD']
+          - name: sell_amount
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: buy_currency
+            data_type: string
+            data_tests:
+              - not_null
+          - name: buy_amount
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: reference_rate
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: margin_bp
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: related_trade_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_trade')
+                    field: trade_id
+
+      - name: gen_position_snapshot
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - snapshot_date
+                  - account_id
+                  - isin
+        columns:
+          - name: snapshot_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: account_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_account')
+                    field: account_id
+          - name: isin
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_price')
+                    field: isin
+          - name: quantity
+            data_type: int64
+            data_tests:
+              - not_null
+          - name: currency
+            data_type: string
+            data_tests:
+              - not_null
+          - name: is_month_end
+            data_type: bool
+            data_tests:
+              - not_null
+
+      - name: gen_price
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - business_date
+                  - isin
+        columns:
+          - name: business_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: isin
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+              - relationships:
+                  arguments:
+                    to: source('esma_firds', 'firds_instrument')
+                    field: isin
+          - name: price
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: currency
+            data_type: string
+            data_tests:
+              - not_null
+          - name: price_source
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['carried_forward', 'simulated']
+          - name: price_convention
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['per_unit', 'percent_of_par']
+
+      - name: gen_rm
+        columns:
+          - name: rm_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: rm_name
+            data_type: string
+            data_tests:
+              - not_null
+          - name: desk_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_desk')
+                    field: desk_id
+          - name: title
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['director', 'senior_director']
+
+      - name: gen_rm_assignment
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - client_id
+                  - rm_id
+                  - assigned_date
+        columns:
+          - name: client_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_client')
+                    field: client_id
+          - name: rm_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_rm')
+                    field: rm_id
+          - name: assigned_date
+            data_type: string
+            data_tests:
+              - not_null
+
+      - name: gen_trade
+        data_tests:
+          - relationships_composite:
+              arguments:
+                to: source('esma_firds', 'firds_instrument')
+                columns: ['isin', 'mic']
+                to_columns: ['isin', 'trading_venue_mic']
+        columns:
+          - name: trade_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: trade_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: settlement_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: account_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_account')
+                    field: account_id
+          - name: isin
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: mic
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: side
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['BUY', 'SELL']
+          - name: quantity
+            data_type: int64
+            data_tests:
+              - not_null
+          - name: price
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: gross_consideration
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: accrued_interest
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: fees
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: currency
+            data_type: string
+            data_tests:
+              - not_null
+          - name: trade_type
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['FUNDING', 'MARKET', 'REDEMPTION']
+
+      - name: gen_transfer
+        data_tests:
+          - relationships_composite:
+              arguments:
+                to: source('esma_firds', 'firds_instrument')
+                columns: ['isin', 'mic']
+                to_columns: ['isin', 'trading_venue_mic']
+        columns:
+          - name: transfer_id
+            data_type: string
+            data_tests:
+              - unique
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: transfer_date
+            data_type: string
+            data_tests:
+              - not_null
+          - name: account_id
+            data_type: string
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('generated', 'gen_account')
+                    field: account_id
+          - name: isin
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: mic
+            data_type: string
+            data_tests:
+              - not_null
+              - dbt_utils.not_empty_string
+          - name: direction
+            data_type: string
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['IN', 'OUT']
+          - name: quantity
+            data_type: int64
+            data_tests:
+              - not_null
+          - name: market_price
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: market_value
+            data_type: float64
+            data_tests:
+              - not_null
+          - name: currency
+            data_type: string
+            data_tests:
+              - not_null

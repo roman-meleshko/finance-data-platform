@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: stg_generated__accounts
+    description: >
+      One row per account. Discretionary mandates carry the house model their
+      book tracks; is_migrated marks accounts opened before the book's first
+      session, which arrived holding positions rather than starting from cash.
+
+  - name: stg_generated__calendar_days
+    description: >
+      The generator's own day list for the book's two-year window, one row
+      per calendar day with its trading-day flag. Distinct from the
+      raw.calendar source, which is the platform-level trading calendar built
+      from maintained holiday rules.
+
+  - name: stg_generated__cash_events
+    description: >
+      One row per cash movement outside trade settlement. Income events
+      (dividends and coupons) always reference their instrument; deposits,
+      withdrawals and fees are account-level and carry no ISIN.
+
+  - name: stg_generated__clients
+    description: >
+      One row per client. Entities carry a real GLEIF LEI resolvable against
+      the gleif_entity source; private individuals have none.
+
+  - name: stg_generated__crypto_mappings
+    description: >
+      The held instruments whose issuer or wrapper tracks a crypto asset,
+      matched from the FIRDS full instrument name.
+
+  - name: stg_generated__desks
+    description: One row per coverage desk, with its head relationship manager.
+
+  - name: stg_generated__fx_trades
+    description: >
+      One row per FX conversion. The sold leg is always the account's base
+      currency, and every ticket funds the settlement of the related
+      instrument trade.
+
+  - name: stg_generated__position_snapshots
+    description: >
+      Custody holdings per account and instrument at month ends plus the
+      book's final day. Derived positions reconcile against these snapshots
+      in the committed verifier.
+
+  - name: stg_generated__prices
+    description: >
+      One row per instrument per trading day. Simulated paths with
+      non-trading gaps carried forward; debt quotes as percent of par,
+      everything else per unit.
+
+  - name: stg_generated__relationship_managers
+    description: One row per relationship manager, assigned to a desk.
+
+  - name: stg_generated__rm_assignments
+    description: >
+      The client-to-relationship-manager assignment history, one row per
+      assignment with its effective date.
+
+  - name: stg_generated__trades
+    description: >
+      One row per instrument trade. MARKET is ordinary activity, FUNDING is
+      an account deploying new money in its opening window, REDEMPTION
+      retires a maturing bond position at par.
+
+  - name: stg_generated__transfers
+    description: >
+      One row per in-kind security transfer into or out of an account,
+      valued at the transfer-day market price.
