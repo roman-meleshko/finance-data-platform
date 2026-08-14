@@ -205,7 +205,7 @@ def main() -> int:
         count = item['record_count']
         count_str = f'{count:,}' if count is not None else 'unknown'
         print(
-            f"  {item['label']}: {archive_name(item['url'])} — "
+            f"  {item['label']}: {archive_name(item['url'])}, "
             f"{count_str} records, {format_bytes(item['size'])}"
         )
 
