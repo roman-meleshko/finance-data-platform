@@ -126,10 +126,10 @@ def apply_defects(
         ]
         removed = len(prices['isin']) - len(keep)
         # a zero-row removal would ship a "defective" dataset that passes the
-        # very test this defect exists to fail — refuse instead of exiting 0
+        # very test this defect exists to fail; refuse instead of exiting 0
         assert removed > 0, (
             f'missing_price removed nothing: {target_isin} has no price on '
-            f'{day} — the corpus changed under the defect'
+            f'{day}: the corpus changed under the defect'
         )
         for key in prices:
             prices[key] = [prices[key][k] for k in keep]

@@ -54,7 +54,7 @@ CANC_KEY_FIELDS = ('isin', 'trading_venue_mic')
 # / <TermntdRcrd> / <CancRcrd> in a delta; the paths below are identical under
 # all five, which is the whole reason one FIELDS map serves both formats.
 FIELDS = {
-    # FinInstrmGnlAttrbts — always present
+    # FinInstrmGnlAttrbts, always present
     'isin':                       '{*}FinInstrmGnlAttrbts/{*}Id',
     'full_name':                  '{*}FinInstrmGnlAttrbts/{*}FullNm',
     'short_name':                 '{*}FinInstrmGnlAttrbts/{*}ShrtNm',
@@ -62,10 +62,10 @@ FIELDS = {
     'notional_ccy':               '{*}FinInstrmGnlAttrbts/{*}NtnlCcy',
     'commodity_deriv_indicator':  '{*}FinInstrmGnlAttrbts/{*}CmmdtyDerivInd',
 
-    # issuer — direct child of RefData
+    # issuer, a direct child of RefData
     'issuer_lei':                 '{*}Issr',
 
-    # TradgVnRltdAttrbts — the venue half of the grain
+    # TradgVnRltdAttrbts, the venue half of the grain
     'trading_venue_mic':          '{*}TradgVnRltdAttrbts/{*}Id',
     'issuer_requested':           '{*}TradgVnRltdAttrbts/{*}IssrReq',
     'admission_approval_dt':      '{*}TradgVnRltdAttrbts/{*}AdmssnApprvlDtByIssr',
@@ -73,19 +73,19 @@ FIELDS = {
     'first_trade_dt':             '{*}TradgVnRltdAttrbts/{*}FrstTradDt',
     'termination_dt':             '{*}TradgVnRltdAttrbts/{*}TermntnDt',
 
-    # DebtInstrmAttrbts — populated only on debt (null elsewhere)
+    # DebtInstrmAttrbts, populated only on debt (null elsewhere)
     'debt_total_issued_nominal':  '{*}DebtInstrmAttrbts/{*}TtlIssdNmnlAmt',
     'debt_maturity_dt':           '{*}DebtInstrmAttrbts/{*}MtrtyDt',
     'debt_nominal_per_unit':      '{*}DebtInstrmAttrbts/{*}NmnlValPerUnit',
 
-    # DerivInstrmAttrbts scalars — populated only on derivatives (null elsewhere)
+    # DerivInstrmAttrbts scalars, populated only on derivatives (null elsewhere)
     'derivative_expiry_dt':       '{*}DerivInstrmAttrbts/{*}XpryDt',
     'price_multiplier':           '{*}DerivInstrmAttrbts/{*}PricMltplr',
     'option_type':                '{*}DerivInstrmAttrbts/{*}OptnTp',
     'option_exercise_style':      '{*}DerivInstrmAttrbts/{*}OptnExrcStyle',
     'delivery_type':              '{*}DerivInstrmAttrbts/{*}DlvryTp',
 
-    # TechAttrbts — record-level technical data
+    # TechAttrbts, record-level technical data
     'valid_from':                 '{*}TechAttrbts/{*}PblctnPrd/{*}FrDt',
     'relevant_competent_authority': '{*}TechAttrbts/{*}RlvntCmptntAuthrty',
     'relevant_trading_venue':     '{*}TechAttrbts/{*}RlvntTradgVn',
@@ -460,7 +460,7 @@ def identifier_problems(instruments: Columns, underlying: Columns) -> list[Probl
 
     # The same test on the child table doubles as a check on the BRANCH LOGIC: an
     # underlying routed into the wrong branch of underlyings() would carry an
-    # identifier of the wrong shape. INDEX rows are exempt — their identifier is an
+    # identifier of the wrong shape. INDEX rows are exempt: their identifier is an
     # optional ISIN, and the name may be the only identifier they have.
     mistyped = [
         (kind, ident)
